@@ -1,0 +1,3 @@
+image:
+  repository: 587542452178.dkr.ecr.us-east-1.amazonaws.com/backend-eks
+  tag: "latest"
