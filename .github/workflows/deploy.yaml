@@ -1,0 +1,52 @@
+name: Build & Deploy to EKS via ArgoCD
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Login to ECR
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build Docker Image
+      run: |
+        IMAGE_TAG=$(date +%s)
+        docker build -t ${{ secrets.ECR_URL }}:$IMAGE_TAG .
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    - name: Push Image
+      run: |
+        docker push ${{ secrets.ECR_URL }}:${IMAGE_TAG}
+
+    - name: Install yq
+      run: |
+        sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+        sudo chmod +x /usr/bin/yq
+
+    - name: Update image tag in GitOps repo
+      run: |
+        git clone https://github.com/shankarprem12/k8s-argocd-tf.git
+        cd k8s-argocd-tf/myapp
+        yq -i ".image.tag = \"${IMAGE_TAG}\"" values.yaml
+
+        git config user.email "ci@github.com"
+        git config user.name "github-actions"
+
+        git add .
+        git commit -m "Update image tag to ${IMAGE_TAG}"
+
+        git push https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/shankarprem12/k8s-argocd-tf.git
